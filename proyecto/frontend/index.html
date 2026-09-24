@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tablero de Misiones</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #12181F;
+    --panel: #1C2530;
+    --panel-line: #2A3646;
+    --text: #E7EDF3;
+    --text-dim: #8FA0B3;
+    --gold: #E3B23C;
+    --green: #4FAE7E;
+    --red: #D8695A;
+  }
+  *{ box-sizing: border-box; }
+  body{
+    margin:0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    line-height:1.5;
+  }
+  h1,h2,h3{ font-family:'Space Grotesk', sans-serif; margin:0; }
+
+  header{
+    padding: 40px clamp(20px,5vw,64px) 24px;
+    border-bottom: 1px solid var(--panel-line);
+  }
+  header h1{ font-size: clamp(28px,4vw,40px); letter-spacing:-0.01em; }
+  header p{ color: var(--text-dim); max-width: 60ch; margin-top:8px; }
+
+  main{ padding: 32px clamp(20px,5vw,64px) 80px; max-width: 1100px; margin:0 auto; }
+
+  .config{
+    display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+    background: var(--panel); border:1px solid var(--panel-line);
+    padding:14px 16px; border-radius:10px; margin-bottom:32px;
+  }
+  .config label{ font-size:13px; color:var(--text-dim); }
+  .config input{
+    flex:1; min-width:220px; background:#0F151C; border:1px solid var(--panel-line);
+    color:var(--text); padding:8px 10px; border-radius:6px; font-size:13px;
+  }
+  .config button{
+    background: var(--gold); color:#1a1406; border:none; font-weight:600;
+    padding:8px 16px; border-radius:6px; cursor:pointer; font-size:13px;
+  }
+  .config button:hover{ filter:brightness(1.08); }
+
+  .stats-row{ display:flex; gap:14px; margin-bottom:32px; flex-wrap:wrap; }
+  .stat{
+    background: var(--panel); border:1px solid var(--panel-line);
+    border-radius:10px; padding:16px 20px; min-width:140px; flex:1;
+  }
+  .stat .num{ font-family:'Space Grotesk',sans-serif; font-size:28px; }
+  .stat .lbl{ color:var(--text-dim); font-size:13px; margin-top:2px; }
+
+  .board{ display:grid; grid-template-columns: repeat(auto-fill, minmax(280px,1fr)); gap:16px; }
+  .card{
+    background: var(--panel); border:1px solid var(--panel-line);
+    border-radius:12px; padding:20px;
+  }
+  .card h3{ font-size:17px; }
+  .card .correo{ color:var(--text-dim); font-size:12.5px; margin-top:2px; }
+  .card .carnet{ color:var(--text-dim); font-size:12px; margin-top:6px; font-variant-numeric: tabular-nums; }
+
+  .progress-track{
+    background:#0F151C; border-radius:6px; height:8px; margin-top:14px; overflow:hidden;
+  }
+  .progress-fill{
+    height:100%; background: var(--green); border-radius:6px; transition: width .4s ease;
+  }
+  .progress-label{ font-size:12px; color:var(--text-dim); margin-top:6px; }
+
+  .missions{ margin-top:14px; display:flex; flex-direction:column; gap:6px; }
+  .mission-row{
+    display:flex; align-items:center; gap:8px; font-size:13px;
+  }
+  .dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .dot.on{ background: var(--green); }
+  .dot.off{ background: var(--red); opacity:.6; }
+  .mission-row .mname.off{ color: var(--text-dim); }
+
+  .empty, .error{
+    color: var(--text-dim); padding:40px 0; text-align:center; font-size:14px;
+  }
+  .error{ color: var(--red); }
+
+  footer{ text-align:center; color:var(--text-dim); font-size:12px; padding:24px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Tablero de Misiones</h1>
+  <p>Avance de cada estudiante en el reto Maestro-Detalle: misiones completadas frente al catálogo total.</p>
+</header>
+
+<main>
+  <div class="config">
+    <label for="apiUrl">URL de la API:</label>
+    <input id="apiUrl" type="text" placeholder="https://tu-api.onrender.com" />
+    <button onclick="guardarUrl()">Guardar</button>
+    <button onclick="cargarDatos()">Actualizar</button>
+  </div>
+
+  <div class="stats-row" id="statsRow"></div>
+  <div class="board" id="board">
+    <div class="empty">Configura la URL de tu API arriba y presiona "Actualizar".</div>
+  </div>
+</main>
+
+<footer>API Maestro-Detalle con Catálogo y Control de Estado</footer>
+
+<script>
+  const STORAGE_KEY = 'apiBaseUrl';
+
+  function getApiUrl(){
+    return localStorage.getItem(STORAGE_KEY) || '';
+  }
+
+  function guardarUrl(){
+    const val = document.getElementById('apiUrl').value.trim().replace(/\/$/, '');
+    localStorage.setItem(STORAGE_KEY, val);
+    cargarDatos();
+  }
+
+  async function cargarDatos(){
+    const board = document.getElementById('board');
+    const statsRow = document.getElementById('statsRow');
+    const base = getApiUrl();
+
+    if(!base){
+      board.innerHTML = '<div class="empty">Configura la URL de tu API arriba y presiona "Actualizar".</div>';
+      statsRow.innerHTML = '';
+      return;
+    }
+
+    board.innerHTML = '<div class="empty">Cargando…</div>';
+    statsRow.innerHTML = '';
+
+    try{
+      const [misionesRes, estudiantesRes] = await Promise.all([
+        fetch(base + '/api/misiones').then(r => r.json()),
+        fetch(base + '/api/estudiantes').then(r => r.json())
+      ]);
+
+      if(!estudiantesRes.ok) throw new Error(estudiantesRes.error || 'Error al cargar estudiantes');
+
+      const totalMisiones = (misionesRes.misiones || []).length;
+      const estudiantes = estudiantesRes.estudiantes || [];
+
+      renderStats(estudiantes, totalMisiones);
+      renderBoard(estudiantes, totalMisiones);
+    }catch(err){
+      board.innerHTML = '<div class="error">No se pudo conectar con la API: ' + err.message + '</div>';
+    }
+  }
+
+  function renderStats(estudiantes, totalMisiones){
+    const statsRow = document.getElementById('statsRow');
+    const totalEstudiantes = estudiantes.length;
+    const promedio = totalEstudiantes && totalMisiones
+      ? Math.round(estudiantes.reduce((a,e) => a + (e.misionesCompletadas/totalMisiones), 0) / totalEstudiantes * 100)
+      : 0;
+
+    statsRow.innerHTML = `
+      <div class="stat"><div class="num">${totalEstudiantes}</div><div class="lbl">Estudiantes registrados</div></div>
+      <div class="stat"><div class="num">${totalMisiones}</div><div class="lbl">Misiones en el catálogo</div></div>
+      <div class="stat"><div class="num">${promedio}%</div><div class="lbl">Avance promedio</div></div>
+    `;
+  }
+
+  function renderBoard(estudiantes, totalMisiones){
+    const board = document.getElementById('board');
+
+    if(estudiantes.length === 0){
+      board.innerHTML = '<div class="empty">Todavía no hay estudiantes registrados.</div>';
+      return;
+    }
+
+    board.innerHTML = estudiantes.map(e => {
+      const pct = totalMisiones ? Math.round((e.misionesCompletadas / totalMisiones) * 100) : 0;
+      const misionesHtml = e.misiones.map(m => `
+        <div class="mission-row">
+          <span class="dot ${m.estado ? 'on' : 'off'}"></span>
+          <span class="mname ${m.estado ? '' : 'off'}">${escapeHtml(m.nombre || ('Misión ' + m.misionId))}</span>
+        </div>
+      `).join('');
+
+      return `
+        <div class="card">
+          <h3>${escapeHtml(e.nombre)}</h3>
+          <div class="correo">${escapeHtml(e.correo)}</div>
+          <div class="carnet">${escapeHtml(e.carnet)}</div>
+          <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+          <div class="progress-label">${e.misionesCompletadas} de ${totalMisiones} misiones completadas (${pct}%)</div>
+          <div class="missions">${misionesHtml || '<span class="mname off">Sin misiones registradas</span>'}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function escapeHtml(str){
+    return String(str ?? '').replace(/[&<>"']/g, s => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    }[s]));
+  }
+
+  // Al cargar la página, restaurar la URL guardada y consultar
+  window.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('apiUrl').value = getApiUrl();
+    if(getApiUrl()) cargarDatos();
+  });
+</script>
+
+</body>
+</html>
